@@ -43,15 +43,10 @@
 // @match              https://chat.z.ai/*
 // @require            https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js
 // @require            https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js
-// @require            https://cdn.jsdelivr.net/npm/fuzzysort@3.1.0/fuzzysort.min.js
-// @require            https://cdn.jsdelivr.net/npm/katex@0.16.44/dist/katex.min.js
 // @require            https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel-markdown-vendor-ophel-1.3.0.js#sha256=52740b36f81406b4f1ac892e393c93f8f7acbc94644d0a5267492093db317736
-// @require            https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel-gemini-watermark-remover-1.0.17-ophel-1.3.0.js#sha256=a11db287fdbf99b05e77765db7535a2bb629da7fef7b122222a0951ecb933c30
 // @require            https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel-adapters-vendor-ophel-1.3.0.js#sha256=bcf76c76ef76d8f2d501b2ff301149dd2f0e6193c68083ac8e2ce9f5d3b1a2f6
 // @resource           ophelAlipay                   https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel-alipay.befaae712a6a.png#sha256=befaae712a6a55182326b762a5c861833d9b9bbc23f6e89e5e70e00b1437fe86
-// @resource           ophelAssistantMermaidVendor   https://cdn.jsdelivr.net/npm/@mermaid-js/tiny@11.13.0/dist/mermaid.tiny.js
 // @resource           ophelIcon                     https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel-icon.193ed41c2441.png#sha256=193ed41c244185e553de148c7919de5486f5e9c323901b1f84cf220726b1b2d0
-// @resource           ophelKatexCss                 https://cdn.jsdelivr.net/npm/katex@0.16.44/dist/katex.min.css
 // @resource           ophelLocaleDe                 https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel.locale.de.0c88d458ff07.json#sha256=0c88d458ff0767e6528dd83556f885517572341a6504af277e254a54cf0e902a
 // @resource           ophelLocaleEn                 https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel.locale.en.684c9d9b2023.json#sha256=684c9d9b202382467e8a248fe0a8474c0ff04ce00ac2db663fd4dfe20d37b5fd
 // @resource           ophelLocaleEs                 https://cdn.jsdelivr.net/gh/urzeye/ophel@2141c70e8c775415b37a4df72ce796772835be0e/userscript-assets/ophel.locale.es.21dd338adabb.json#sha256=21dd338adabb1804cbf1b838f7175f037bb27bbdc73d09162c6698f00df133a0
