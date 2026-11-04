@@ -99,161 +99,42 @@ Modify [ophel-atlas_ai-chat-organizer.js](file:///home/dj/Desktop/projects/users
 
 ---
 
-### 2. Multi-Protocol Zero-Trust Runtime Sandbox
+### 2. Userscript Isolation & Safe Fallback Stubs
 
-#### [MODIFY] [ophel-atlas_ai-chat-organizer.js](file:///home/dj/Desktop/projects/userscripts.js/ophel-atlas_ai-chat-organizer.js#L104-L120)
+> [!WARNING]
+> **Post-Mortem & Architecture Correction (Host Page Breakage)**:
+> In earlier revisions, a global monkeypatching "Zero-Trust Network Guard" was injected at `document-start` overriding `window.fetch`, `window.XMLHttpRequest`, `window.WebSocket`, `window.Worker`, `document.createElement('img')`, and `Node.prototype.appendChild`.
+>
+> Because userscripts share the DOM tree (`document`, `Node.prototype`) and frequently the page window context with the host website, globally blocking `fetch`, external `img.src`, and script chunk appending **directly sabotaged the host websites themselves**:
+> - `chatgpt.com` broke when attempting to load the user's avatar (`<img src="https://cdn.auth0.com/avatars/dj.png">`).
+> - `chatgpt.com` broke when polling synchronization APIs (`fetch("https://bzr.openai.com/v1/obi/sync")` and `/backend-api/conversation`).
+> - ChatGPT displayed "chatgpt hit a snag - something went wrong".
+>
+> **The Correct Security Model:**
+> Security is enforced through:
+> 1. **Revoking Privileged Extension Capabilities:** Without `@grant GM_xmlhttpRequest` and `@connect *`, the userscript cannot make background cross-origin requests or bypass host CSP/CORS. Without `@grant GM_cookie`, it cannot inspect session cookies. Without `@grant unsafeWindow`, it cannot breach sandbox boundaries.
+> 2. **Neutering Internal Dangerous Routines:** The script's dynamic script injection method (`injectScript`) is neutered to a safe `return Promise.resolve()`.
+> 3. **Non-Invasive Fallback Stubs:** `GM_xmlhttpRequest` (which websites never call) is safely stubbed in userscript scope to prevent unhandled ReferenceErrors if background features like WebDAV are invoked.
+> 4. **Safe Watermark Parameter Binding:** Passing `typeof __OphelGeminiWatermarkRemover !== "undefined" ? ... : null` prevents ReferenceErrors when optional `@require` dependencies are excluded.
+> 5. **Host APIs Remain Untouched:** Native `window.fetch`, `window.WebSocket`, `window.Worker`, and `document.createElement` are left unaltered so host AI applications operate seamlessly.
 
-Immediately following the metadata block, insert a comprehensive Multi-Protocol Network Guard that blocks HTTP, WebRTC, Sockets, Beacons, Workers, and DNS side-channels within the script context:
-
+#### Safe Stub for `GM_xmlhttpRequest`
 ```javascript
-/* =========================================================================
- * MULTI-PROTOCOL ZERO-TRUST NETWORK GUARD (OUTLINE & EXPORT PRIVACY SANDBOX)
- * Proactively blocks all outbound communication vectors:
- * - HTTP/HTTPS (fetch, XMLHttpRequest, GM_xmlhttpRequest)
- * - WebSockets (WebSocket)
- * - WebRTC (RTCPeerConnection, RTCDataChannel)
- * - Telemetry & Side-Channels (sendBeacon, EventSource, WebTransport)
- * - Background Execution (Worker, SharedWorker)
- * - DNS Prefetching / Link Exfiltration (dns-prefetch, preconnect, ping)
- * Permits ONLY in-memory local blob: and data: URLs required for file export.
- * ========================================================================= */
-(function() {
-  const _blocked = (api, target) => {
-    console.warn(`[Ophel Security Sandbox] Blocked outbound ${api}${target ? `: ${target}` : ""}`);
-    throw new Error(`[Ophel Security Sandbox] Network disabled for ${api}`);
-  };
-
-  // 1. HTTP Fetch Guard
-  const _nativeFetch = window.fetch.bind(window);
-  window.fetch = async function(input, init) {
-    const url = typeof input === "string" ? input : (input?.url || "");
-    if (url.startsWith("blob:") || url.startsWith("data:")) {
-      return _nativeFetch(input, init);
-    }
-    _blocked("fetch", url);
-  };
-
-  // 2. XMLHttpRequest Guard
-  const _NativeXHR = window.XMLHttpRequest;
-  window.XMLHttpRequest = class extends _NativeXHR {
-    open(method, url, ...args) {
-      const urlStr = String(url);
-      if (urlStr.startsWith("blob:") || urlStr.startsWith("data:")) {
-        return super.open(method, url, ...args);
-      }
-      _blocked("XMLHttpRequest", urlStr);
-    }
-  };
-
-  // 3. WebSocket Guard
-  window.WebSocket = class {
-    constructor(url) {
-      _blocked("WebSocket", url);
-    }
-  };
-
-  // 4. WebRTC Guard (Blocks peer connections & STUN/TURN traffic)
-  window.RTCPeerConnection = class {
-    constructor() { _blocked("RTCPeerConnection"); }
-  };
-  window.webkitRTCPeerConnection = window.RTCPeerConnection;
-  if ("RTCDataChannel" in window) {
-    window.RTCDataChannel = class {
-      constructor() { _blocked("RTCDataChannel"); }
-    };
-  }
-
-  // 5. Telemetry & Streaming Guards
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon = function(url) {
-      _blocked("navigator.sendBeacon", url);
-      return false;
-    };
-  }
-  if ("EventSource" in window) {
-    window.EventSource = class {
-      constructor(url) { _blocked("EventSource", url); }
-    };
-  }
-  if ("WebTransport" in window) {
-    window.WebTransport = class {
-      constructor(url) { _blocked("WebTransport", url); }
-    };
-  }
-
-  // 6. Background Worker Guard
-  window.Worker = class {
-    constructor() { _blocked("Worker"); }
-  };
-  window.SharedWorker = class {
-    constructor() { _blocked("SharedWorker"); }
-  };
-
-  // 7. Dynamic Script & DOM Exfiltration Guard
-  const _origCreateElement = document.createElement.bind(document);
-  document.createElement = function(tagName, options) {
-    const tag = String(tagName).toLowerCase();
-
-    // HARD BLOCK: Dynamic script creation (prevents remote script loading)
-    if (tag === "script") {
-      _blocked("document.createElement('script')");
-    }
-
-    // HARD BLOCK: Frames and object embeds
-    if (tag === "iframe" || tag === "object" || tag === "embed") {
-      _blocked(`document.createElement('${tag}')`);
-    }
-
-    const el = _origCreateElement(tagName, options);
-
-    // Block image/audio/video phone-home telemetry
-    if (tag === "img" || tag === "audio" || tag === "video") {
-      const origSetAttr = el.setAttribute.bind(el);
-      el.setAttribute = function(name, val) {
-        if (name === "src") {
-          const str = String(val);
-          if (!str.startsWith("blob:") && !str.startsWith("data:") && !str.startsWith("/")) {
-            _blocked(`<${tag} src="${str}">`);
-          }
-        }
-        return origSetAttr(name, val);
-      };
-    }
-
-    // Block link prefetch & external resource requests
-    if (tag === "link") {
-      const origSetAttr = el.setAttribute.bind(el);
-      el.setAttribute = function(name, val) {
-        if (name === "rel" && /^(dns-prefetch|preconnect|prefetch|prerender)$/i.test(val)) {
-          _blocked("DNS/Resource Prefetch", val);
-        }
-        return origSetAttr(name, val);
-      };
-    }
-
-    if (tag === "a") {
-      el.removeAttribute("ping");
-    }
-
-    return el;
-  };
-
-  // 8. Prevent appending any script elements to the DOM
-  const _origAppendChild = Node.prototype.appendChild;
-  Node.prototype.appendChild = function(child) {
-    if (child instanceof HTMLScriptElement) {
-      _blocked("Node.appendChild(<script>)");
-    }
-    return _origAppendChild.call(this, child);
-  };
-
-  // 9. Stub GM_xmlhttpRequest
+// Safe fallback stub for GM_xmlhttpRequest if not granted by userscript manager
+if (typeof GM_xmlhttpRequest === "undefined") {
   globalThis.GM_xmlhttpRequest = function(opts) {
-    _blocked("GM_xmlhttpRequest", opts?.url || "");
+    console.warn("[Ophel] GM_xmlhttpRequest is disabled");
     opts?.onerror?.(new Error("GM_xmlhttpRequest is disabled"));
     return { abort() {} };
   };
-})();
+}
+```
+
+#### Safe Parameter Binding for Optional Dependencies
+```javascript
+})(typeof __OphelGeminiWatermarkRemover !== "undefined" ? __OphelGeminiWatermarkRemover : {
+  removeWatermarkFromImageDataSync: () => ({ meta: { applied: false, skipReason: "disabled" } })
+});
 ```
 
 ---
@@ -271,17 +152,12 @@ Immediately following the metadata block, insert a comprehensive Multi-Protocol 
    ```bash
    node -c ophel-atlas_ai-chat-organizer.js
    ```
-3. **Multi-Protocol Sandbox Smoke Test**:
-   Execute the sandbox in a test harness verifying that every channel triggers a block:
-   - `fetch("https://...")` -> Throws
-   - `fetch("blob:...")` -> Allowed
-   - `new WebSocket(...)` -> Throws
-   - `new RTCPeerConnection(...)` -> Throws
-   - `navigator.sendBeacon(...)` -> Throws / returns false
-   - `new EventSource(...)` -> Throws
-   - `new WebTransport(...)` -> Throws
-   - `new Worker(...)` -> Throws
-   - `<link rel="dns-prefetch">` -> Throws / blocked
+3. **Host Compatibility and Fallback Verification**:
+   Execute the verification harness to ensure:
+   - Host `fetch(...)` (e.g. `https://bzr.openai.com/v1/obi/sync`) remains native and unblocked.
+   - Host DOM element creation (e.g. `<img src="https://cdn.auth0.com/avatars/dj.png">`) remains native and unblocked.
+   - Script initializes completely without `ReferenceError: __OphelGeminiWatermarkRemover is not defined`.
+   - `GM_xmlhttpRequest` falls back safely with an error callback rather than throwing an unhandled exception.
 
 ### Manual Verification Instructions
 1. Install the modified script in Tampermonkey.

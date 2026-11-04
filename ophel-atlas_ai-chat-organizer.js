@@ -96,154 +96,14 @@
 // @noframes
 // ==/UserScript==
 
-/* =========================================================================
- * MULTI-PROTOCOL ZERO-TRUST NETWORK GUARD (OUTLINE & EXPORT PRIVACY SANDBOX)
- * Proactively blocks all outbound communication vectors:
- * - HTTP/HTTPS (fetch, XMLHttpRequest, GM_xmlhttpRequest)
- * - WebSockets (WebSocket)
- * - WebRTC (RTCPeerConnection, RTCDataChannel)
- * - Telemetry & Side-Channels (sendBeacon, EventSource, WebTransport)
- * - Background Execution (Worker, SharedWorker)
- * - Dynamic Scripts & DOM Exfiltration (script, iframe, embed, object, img exfil, prefetch)
- * Permits ONLY in-memory local blob: and data: URLs required for file export.
- * ========================================================================= */
-(function() {
-  const _blocked = (api, target) => {
-    console.warn(`[Ophel Security Sandbox] Blocked outbound ${api}${target ? `: ${target}` : ""}`);
-    throw new Error(`[Ophel Security Sandbox] Network disabled for ${api}`);
-  };
-
-  // 1. Scoped Fetch Guard (Permits blob: and data: for local export file creation)
-  const _nativeFetch = window.fetch.bind(window);
-  window.fetch = async function(input, init) {
-    const url = typeof input === "string" ? input : (input?.url || "");
-    if (url.startsWith("blob:") || url.startsWith("data:")) {
-      return _nativeFetch(input, init);
-    }
-    _blocked("fetch", url);
-  };
-
-  // 2. Scoped XMLHttpRequest Guard (Permits blob: and data:)
-  const _NativeXHR = window.XMLHttpRequest;
-  window.XMLHttpRequest = class extends _NativeXHR {
-    open(method, url, ...args) {
-      const urlStr = String(url);
-      if (urlStr.startsWith("blob:") || urlStr.startsWith("data:")) {
-        return super.open(method, url, ...args);
-      }
-      _blocked("XMLHttpRequest", urlStr);
-    }
-  };
-
-  // 3. Scoped WebSocket Guard
-  window.WebSocket = class {
-    constructor(url) {
-      _blocked("WebSocket", url);
-    }
-  };
-
-  // 4. WebRTC Guard (Blocks peer connections & STUN/TURN traffic)
-  window.RTCPeerConnection = class {
-    constructor() { _blocked("RTCPeerConnection"); }
-  };
-  window.webkitRTCPeerConnection = window.RTCPeerConnection;
-  if ("RTCDataChannel" in window) {
-    window.RTCDataChannel = class {
-      constructor() { _blocked("RTCDataChannel"); }
-    };
-  }
-
-  // 5. Telemetry & Streaming Guards
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon = function(url) {
-      _blocked("navigator.sendBeacon", url);
-      return false;
-    };
-  }
-  if ("EventSource" in window) {
-    window.EventSource = class {
-      constructor(url) { _blocked("EventSource", url); }
-    };
-  }
-  if ("WebTransport" in window) {
-    window.WebTransport = class {
-      constructor(url) { _blocked("WebTransport", url); }
-    };
-  }
-
-  // 6. Background Worker Guard
-  window.Worker = class {
-    constructor() { _blocked("Worker"); }
-  };
-  window.SharedWorker = class {
-    constructor() { _blocked("SharedWorker"); }
-  };
-
-  // 7. Dynamic Script & DOM Exfiltration Guard
-  const _origCreateElement = document.createElement.bind(document);
-  document.createElement = function(tagName, options) {
-    const tag = String(tagName).toLowerCase();
-
-    // HARD BLOCK: Dynamic script creation (prevents remote script loading)
-    if (tag === "script") {
-      _blocked("document.createElement('script')");
-    }
-
-    // HARD BLOCK: Frames and object embeds
-    if (tag === "iframe" || tag === "object" || tag === "embed") {
-      _blocked(`document.createElement('${tag}')`);
-    }
-
-    const el = _origCreateElement(tagName, options);
-
-    // Block image/audio/video phone-home telemetry
-    if (tag === "img" || tag === "audio" || tag === "video") {
-      const origSetAttr = el.setAttribute.bind(el);
-      el.setAttribute = function(name, val) {
-        if (name === "src") {
-          const str = String(val);
-          if (!str.startsWith("blob:") && !str.startsWith("data:") && !str.startsWith("/")) {
-            _blocked(`<${tag} src="${str}">`);
-          }
-        }
-        return origSetAttr(name, val);
-      };
-    }
-
-    // Block link prefetch & external resource requests
-    if (tag === "link") {
-      const origSetAttr = el.setAttribute.bind(el);
-      el.setAttribute = function(name, val) {
-        if (name === "rel" && /^(dns-prefetch|preconnect|prefetch|prerender)$/i.test(val)) {
-          _blocked("DNS/Resource Prefetch", val);
-        }
-        return origSetAttr(name, val);
-      };
-    }
-
-    if (tag === "a") {
-      el.removeAttribute("ping");
-    }
-
-    return el;
-  };
-
-  // 8. Prevent appending any script elements to the DOM
-  const _origAppendChild = Node.prototype.appendChild;
-  Node.prototype.appendChild = function(child) {
-    if (child instanceof HTMLScriptElement) {
-      _blocked("Node.appendChild(<script>)");
-    }
-    return _origAppendChild.call(this, child);
-  };
-
-  // 9. Stub GM_xmlhttpRequest
+// Safe fallback stub for GM_xmlhttpRequest if not granted by userscript manager
+if (typeof GM_xmlhttpRequest === "undefined") {
   globalThis.GM_xmlhttpRequest = function(opts) {
-    _blocked("GM_xmlhttpRequest", opts?.url || "");
+    console.warn("[Ophel] GM_xmlhttpRequest is disabled");
     opts?.onerror?.(new Error("GM_xmlhttpRequest is disabled"));
     return { abort() {} };
   };
-})();
+}
 
 (async function (geminiWatermarkRemover) {
 	'use strict';
@@ -2142,4 +2002,6 @@
 	new Set([...je,"ophel:global-search-shortcut-nudge:v1","ophel:releaseNotesState",V,"ophel:clearAllFlag","ophel:restoreFlag"])),t=Array.from(
 	new Set([...e,...We]));II.chrome={storage:{local:{get:(t,n)=>{if(null===t){const t={};for(const n of e){const e=GM_getValue(n);null!=e&&(t[n]=e);}n(t);}else if("string"==typeof t){const e=GM_getValue(t);n({[t]:e});}else {const e={};for(const n of t)e[n]=GM_getValue(n);n(e);}},set:(e,t)=>{for(const[n,r]of Object.entries(e))GM_setValue(n,r);t?.();},remove:(e,t)=>{const n="string"==typeof e?[e]:e;for(const r of n)GM_deleteValue(r);t?.();},clear:e=>{for(const n of t)GM_deleteValue(n);e?.();}},sync:{get:(t,n)=>{if(null===t){const t={};for(const n of e){const e=GM_getValue(n);null!=e&&(t[n]=e);}n(t);}else if("string"==typeof t){const e=GM_getValue(t);n({[t]:e});}else {const e={};for(const n of t)e[n]=GM_getValue(n);n(e);}},set:(e,t)=>{for(const[n,r]of Object.entries(e))GM_setValue(n,r);t?.();},remove:(e,t)=>{const n="string"==typeof e?[e]:e;for(const r of n)GM_deleteValue(r);t?.();},clear:e=>{for(const n of t)GM_deleteValue(n);e?.();}},onChanged:{addListener:()=>{},removeListener:()=>{}}},runtime:{getManifest:()=>({version:"1.0.0"}),getURL:e=>e,sendMessage:()=>Promise.resolve({})}};}const DI=II.chrome?.storage;DI&&!DI.onChanged&&(DI.onChanged={addListener:()=>{},removeListener:()=>{}});const zI=II.chrome?.runtime;zI&&!zI.onMessage&&(zI.onMessage={addListener:()=>{},removeListener:()=>{}});const{shouldInitializeOnCurrentSite:_I}=await( o(async()=>{const{shouldInitializeOnCurrentSite:e}=await Promise.resolve().then(()=>Qr);return {shouldInitializeOnCurrentSite:e}},void 0));async function BI(){o(async()=>{const{checkUserscriptRemoteConfigOnStartup:e}=await Promise.resolve().then(()=>Ds);return {checkUserscriptRemoteConfigOnStartup:e}},void 0).then(({checkUserscriptRemoteConfigOnStartup:e})=>e()).then(e=>{"failed"===e?.status&&console.warn("[Ophel] Remote config check failed:",e.error);}).catch(e=>{console.warn("[Ophel] Failed to start remote config check:",e);});const[{getAdapter:e,getEffectiveAdapter:t,getBrokenOriginBinding:n,initAdapterRegistry:r},{App:i},{initNetworkMonitor:s},{initGeminiTitleGuard:l},{showSitePackBindingIssueNotice:c},{publishAdaptersVendorBridge:d}]=await Promise.all([o(()=>Promise.resolve().then(()=>_d),void 0),o(()=>Promise.resolve().then(()=>BC),void 0),o(()=>Promise.resolve().then(()=>pT),void 0),o(()=>Promise.resolve().then(()=>kT),void 0),o(()=>Promise.resolve().then(()=>CT),void 0),o(()=>Promise.resolve().then(()=>_T),void 0)]);d(),await r(),l();let h=null,u=null;const g=()=>{h?.disconnect(),h=null,null!==u&&(window.clearInterval(u),u=null);};await(async()=>{try{const n=document.createElement("div");n.id="ophel-userscript-root",Rt(n),n.style.cssText="all: initial; display: block; position: fixed; inset: 0; width: 0; height: 0; overflow: visible; pointer-events: none; z-index: 2147483647;";const r=()=>document.body||document.documentElement,s=async()=>{r()||await new Promise(e=>{const t=new MutationObserver(()=>{r()&&(t.disconnect(),e());});t.observe(document.documentElement,{childList:!0,subtree:!0});});},l=()=>{const e=r();e&&n.parentElement!==e&&e.appendChild(n);};await s(),l(),[250,600,1200,2e3,3500,5e3].forEach(e=>setTimeout(l,e)),h=new MutationObserver(()=>{n.isConnected||l();}),h.observe(document.documentElement,{childList:!0,subtree:!0}),u=window.setInterval(()=>{n.isConnected||l();},2e3),window.location.hostname.includes("chatglm.cn")&&n.classList.add("gh-site-chatglm");const c=n.attachShadow({mode:"open"}),d=document.createElement("style");let g="";try{g=localStorage.getItem("ophel_us_theme_cache")||"";}catch{}d.textContent=($I||"")+(g?"\n"+g:""),c.appendChild(d);const p=document.createElement("div");p.id="ophel-app-container",c.appendChild(p);const m=()=>{const[n,r]=a.useState(()=>e()),[,s]=a.useState(0),l=a.useRef(null),c=a.useCallback(()=>{const n=l.current;return n?t(n.getState().settings.disabledSites):e()},[]),[d,h]=a.useState(!1),[u,g]=a.useState(!1),p=a.useCallback(e=>{const t=l.current;return !(!t||!e)&&(n=t.getState().settings.hiddenPaths[e.getSiteInstanceKey()],r=window.location.pathname,n?.some(e=>!0===Ot(e)?.test(r))??!1);var n,r;},[]);return a.useEffect(()=>ie(()=>{s(e=>e+1);}),[]),a.useEffect(()=>{let e=!1,t=null;return o(async()=>{const{useSettingsStore:e}=await Promise.resolve().then(()=>jp);return {useSettingsStore:e}},void 0).then(({useSettingsStore:n})=>{if(e)return;l.current=n;const o=()=>{const e=c();r(t=>t===e?t:e),g(p(e));};o(),h(!0),t=n.subscribe(o);}),()=>{e=!0,t?.();}},[c,p]),a.useEffect(()=>{const e=Et(),t=()=>{const e=c();r(t=>t===e?t:e),g(p(e));};return window.addEventListener(kt,t),window.addEventListener("popstate",t),window.addEventListener("hashchange",t),()=>{window.removeEventListener(kt,t),window.removeEventListener("popstate",t),window.removeEventListener("hashchange",t),e();}},[c,p]),d&&n&&!u?a.createElement(i,{key:n.getSiteInstanceKey(),adapter:n}):null};U.createRoot(p).render(a.createElement(m));}catch(qI){throw g(),qI}})(),window.addEventListener("unload",g),window.addEventListener("unload",PI);const{useSettingsStore:p,getSettingsState:m,claimLegacySiteSettings:f,subscribeSettings:b}=await o(async()=>{const{useSettingsStore:e,getSettingsState:t,claimLegacySiteSettings:n,subscribeSettings:r}=await Promise.resolve().then(()=>jp);return {useSettingsStore:e,getSettingsState:t,claimLegacySiteSettings:n,subscribeSettings:r}},void 0),{useConversationsStore:v}=await o(async()=>{const{useConversationsStore:e}=await Promise.resolve().then(()=>Zg);return {useConversationsStore:e}},void 0),{useFoldersStore:y}=await o(async()=>{const{useFoldersStore:e}=await Promise.resolve().then(()=>rp);return {useFoldersStore:e}},void 0),{useTagsStore:w}=await o(async()=>{const{useTagsStore:e}=await Promise.resolve().then(()=>Gp);return {useTagsStore:e}},void 0),{usePromptsStore:x}=await o(async()=>{const{usePromptsStore:e}=await Promise.resolve().then(()=>mf);return {usePromptsStore:e}},void 0),{useClaudeSessionKeysStore:k}=await o(async()=>{const{useClaudeSessionKeysStore:e}=await Promise.resolve().then(()=>ok);return {useClaudeSessionKeysStore:e}},void 0),{useReadingHistoryStore:S}=await o(async()=>{const{useReadingHistoryStore:e}=await Promise.resolve().then(()=>lk);return {useReadingHistoryStore:e}},void 0),C=e=>{if(e.getState()._hasHydrated)return Promise.resolve(true);return new Promise(t=>{let n,r=false;const o=e=>{r||(r=true,window.clearTimeout(n),t(e));},a=e.subscribe(e=>{e._hasHydrated&&(a(),o(true));});n=window.setTimeout(()=>{a(),e.setState({_hasHydrated:true}),o(false);},5e3);})};let T=null,E=null,I=null,M=0,N=false,A=null;const P=()=>{I?.(),I=null,T=null,M++,A?.();},L=async()=>{const r=e();if(r){if(E===r)return;E=r;try{if(await Promise.all([C(p),C(v),C(y),C(w),C(x),C(k),C(S)]),E!==r)return;const e=m(),n=t(e.disabledSites);if(!n)return void P();if(T===n)return;P(),T=n;const a=M;n.afterPropertiesSet({});const i=n.getSiteId(),l=n.getSiteInstanceKey();n.canClaimLegacySiteData()&&f(i,l);const{initCoreModules:c,subscribeModuleUpdates:d,initUrlChangeObserver:h,destroyCoreModules:u}=await o(async()=>{const{initCoreModules:e,subscribeModuleUpdates:t,initUrlChangeObserver:n,destroyCoreModules:r}=await Promise.resolve().then(()=>TI);return {initCoreModules:e,subscribeModuleUpdates:t,initUrlChangeObserver:n,destroyCoreModules:r}},void 0);A=u;const g={adapter:n,settings:e,siteId:i,siteInstanceKey:l,isStale:()=>a!==M||T!==n};await c(g),s();const b=d(g),N=h(g),L=()=>{b(),N();};if(a!==M||T!==n)return void L();I=L;}finally{E===r&&(E=null);}}else if(P(),!N){const e=n();e&&(N=true,c({packId:e.packId,onOpenSettings:()=>{window.dispatchEvent(new CustomEvent("ophel:navigateSettingsPage",{detail:{page:"sitePacks"}}));}}));}};await L(),b(n=>{if(!e())return;const r=t(n.disabledSites);r?r!==T&&L():T&&P();});const R=Et();window.addEventListener(kt,()=>{L();}),window.addEventListener("unload",()=>{R(),I?.();});}await( _I())?window.top!==window.self?console.warn("[Ophel] Running in iframe, skipping initialization"):window.ophelUserscriptInitialized?console.warn("[Ophel] Already initialized, skipping"):(window.ophelUserscriptInitialized=true,function(){const e="undefined"!=typeof unsafeWindow&&unsafeWindow!==window?unsafeWindow:window;if(e.__ophelScrollLockInitialized)return;e.__ophelScrollLockInitialized=true;const t=e.Element,n=e.HTMLElement,r={scrollIntoView:t.prototype.scrollIntoView,scrollTo:e.scrollTo.bind(e),scrollTopDescriptor:Object.getOwnPropertyDescriptor(t.prototype,"scrollTop")||Object.getOwnPropertyDescriptor(n.prototype,"scrollTop")};function o(){const e=document.documentElement.dataset.ophelPositionLock;if(void 0!==e){const t=Number(e);if(!isNaN(t))return t}return null}function a(){document.documentElement.dataset.ophelPositionLockLastBlock=String(Date.now());}if(e.__ophelOriginalApis=r,e.__ophelScrollLockEnabled=false,t.prototype.scrollIntoView=function(t){const n=t&&"object"==typeof t&&t.__bypassLock;if(null!==o()){if(n)return r.scrollIntoView.call(this,t);let e=this.parentElement;for(;e;){if(e.scrollWidth>e.clientWidth&&e.scrollHeight<=e.clientHeight+10)return r.scrollIntoView.call(this,t);e=e.parentElement;}return void a()}if(!e.__ophelScrollLockEnabled)return r.scrollIntoView.call(this,t);let i=this.parentElement;for(;i;){if(i.scrollWidth>i.clientWidth&&i.scrollHeight<=i.clientHeight+10)return r.scrollIntoView.call(this,t);i=i.parentElement;}return n?r.scrollIntoView.call(this,t):void 0},e.scrollTo=function(t,n){if(null!==o())return void a();if(!e.__ophelScrollLockEnabled)return r.scrollTo.apply(e,arguments);let i;return i="object"==typeof t&&null!==t?t.top:n,"number"==typeof i&&i>e.scrollY+50?void 0:r.scrollTo.apply(e,arguments)},r.scrollTopDescriptor){const n=r.scrollTopDescriptor;Object.defineProperty(t.prototype,"scrollTop",{get:function(){return n.get?n.get.call(this):0},set:function(t){if(this.scrollWidth>this.clientWidth&&this.scrollHeight<=this.clientHeight+10)return void(n.set&&n.set.call(this,t));const r=o();if(null!==r)return Math.abs(t-r)>10?(a(),void(n.set&&n.set.call(this,r))):void(n.set&&n.set.call(this,t));e.__ophelScrollLockEnabled&&t>(n.get?n.get.call(this):0)+50||n.set&&n.set.call(this,t);},configurable:true});}const i=t.prototype.scrollTo;t.prototype.scrollTo=function(t,n){if("object"==typeof t&&null!==t&&void 0!==t.left&&void 0===t.top)return i.apply(this,arguments);if(this.scrollWidth>this.clientWidth&&this.scrollHeight<=this.clientHeight+10)return i.apply(this,arguments);if(null!==o())return void a();if(!e.__ophelScrollLockEnabled)return i.apply(this,arguments);let r;"object"==typeof t&&null!==t?r=t.top:"number"==typeof n&&(r=n);const s=this.scrollTop||0;return "number"==typeof r&&r>s+50?void 0:i.apply(this,arguments)};const s=t.prototype.scroll;t.prototype.scroll=function(t,n){if("object"==typeof t&&null!==t&&void 0!==t.left&&void 0===t.top)return s.apply(this,arguments);if(this.scrollWidth>this.clientWidth&&this.scrollHeight<=this.clientHeight+10)return s.apply(this,arguments);if(null!==o())return void a();if(!e.__ophelScrollLockEnabled)return s.apply(this,arguments);let r;"object"==typeof t&&null!==t?r=t.top:"number"==typeof n&&(r=n);const i=this.scrollTop||0;return "number"==typeof r&&r>i+50?void 0:s.apply(this,arguments)};const l=t.prototype.scrollBy;if(t.prototype.scrollBy=function(t,n){if("object"==typeof t&&null!==t&&void 0!==t.left&&void 0===t.top)return l.apply(this,arguments);if(this.scrollWidth>this.clientWidth&&this.scrollHeight<=this.clientHeight+10)return l.apply(this,arguments);if(null!==o())return void a();if(!e.__ophelScrollLockEnabled)return l.apply(this,arguments);let r;return "object"==typeof t&&null!==t?r=t.top:"number"==typeof n&&(r=n),"number"==typeof r&&r>50?void 0:l.apply(this,arguments)},e.addEventListener("message",t=>{"OPHEL_SCROLL_LOCK_TOGGLE"===t.data?.type&&(e.__ophelScrollLockEnabled=t.data.enabled);}),"function"==typeof t.prototype.scrollIntoViewIfNeeded){const e=t.prototype.scrollIntoViewIfNeeded;t.prototype.scrollIntoViewIfNeeded=function(t){if(null===o())return e.call(this,t);a();};}}(),function(){const e="undefined"!=typeof unsafeWindow&&unsafeWindow!==window?unsafeWindow:window;if(e.__ophelKeyboardShieldInitialized)return;e.__ophelKeyboardShieldInitialized=true;const t=e.EventTarget,n=t.prototype.addEventListener,r=t.prototype.removeEventListener,o=new WeakMap,a=e=>"boolean"==typeof e?e:Boolean(e?.capture);t.prototype.addEventListener=function(t,r,i){if(!r||!zt.has(t))return n.call(this,t,r,i);const s=`${t}|${a(i)?1:0}`;let l=o.get(r);l||(l=new Map,o.set(r,l));let c=l.get(s);return c||(c=function(t){"1"!==e.document.documentElement.dataset.ophelKeyboardShield&&("function"==typeof r?r.call(this,t):r.handleEvent(t));},l.set(s,c)),n.call(this,t,c,i)},t.prototype.removeEventListener=function(e,t,n){if(!t||!zt.has(e))return r.call(this,e,t,n);const i=`${e}|${a(n)?1:0}`,s=o.get(t),l=s?.get(i);return l?(s?.delete(i),r.call(this,e,l,n)):r.call(this,e,t,n)};}(),"gemini.google.com"===location.hostname&&Dt("undefined"!=typeof unsafeWindow&&unsafeWindow!==window?unsafeWindow:window),Ht("undefined"!=typeof unsafeWindow&&unsafeWindow!==window?unsafeWindow:window),function(){const e="undefined"!=typeof unsafeWindow&&unsafeWindow!==window?unsafeWindow:window,t=e.location.hostname;"chatgpt.com"!==t&&"chat.openai.com"!==t||Ut(e);}(),"loading"===document.readyState?document.addEventListener("DOMContentLoaded",()=>{BI();},{once:true}):BI()):console.debug("[Ophel] Current site is not in whitelist (built-in sites, installed SitePacks, or custom bindings). Skipping initialization.");const HI=Object.freeze(Object.defineProperty({__proto__:null,getAIStudioModelsFromPage:async function(){if("aistudio.google.com"!==window.location.hostname)return {success:false,error:"NO_AISTUDIO_TAB"};const{getAdapter:e}=await o(async()=>{const{getAdapter:e}=await Promise.resolve().then(()=>_d);return {getAdapter:e}},void 0),t=e();return function(e){if(!e||"object"!=typeof e)return  false;const t=e;return "function"==typeof t.getSiteId&&"function"==typeof t.getModelList}(t)&&t.getSiteId()===De.AISTUDIO?{success:true,models:await t.getModelList()}:{success:false,error:"NOT_AISTUDIO"}}},Symbol.toStringTag,{value:"Module"}));
 
-})(__OphelGeminiWatermarkRemover);
+})(typeof __OphelGeminiWatermarkRemover !== "undefined" ? __OphelGeminiWatermarkRemover : {
+	removeWatermarkFromImageDataSync: () => ({ meta: { applied: false, skipReason: "disabled" } })
+});
